@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart' hide PlayerState;
 import 'package:flutter/foundation.dart';
 import '../models/player_state.dart';
 import '../models/match_settings.dart';
@@ -44,6 +45,20 @@ class MatchProvider extends ChangeNotifier {
 
   Timer? _matchTimer;
   Timer? _osaeKomiTimer;
+
+  // 終了音プレイヤー
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  /// 終了音のアセットパス（assets/sounds/ 以下のファイル名）
+  String endSoundAsset = 'sounds/end.mp3';
+
+  @override
+  void dispose() {
+    _matchTimer?.cancel();
+    _osaeKomiTimer?.cancel();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
 
   // ─── アンドゥ履歴（最大20件）───
   final List<_MatchSnapshot> _history = [];
@@ -93,7 +108,7 @@ class MatchProvider extends ChangeNotifier {
           notifyListeners();
           if (_isDecided) _finishMatch();
         } else {
-          _finishMatch();
+          _finishMatch(timeUp: true);
         }
       });
     }
@@ -178,9 +193,9 @@ class MatchProvider extends ChangeNotifier {
       if (remainingSeconds > 0) {
         remainingSeconds--;
         notifyListeners();
-        if (_isDecided) _finishMatch();
+        if (_isDecided) _finishMatch();   // スコア決着：音なし
       } else {
-        _finishMatch();
+        _finishMatch(timeUp: true);       // 時間切れ：終了音あり
       }
     });
     notifyListeners();
@@ -196,13 +211,26 @@ class MatchProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _finishMatch() {
+  void _finishMatch({bool timeUp = false}) {
     _matchTimer?.cancel();
     _osaeKomiTimer?.cancel();
     osaeKomiRunState = OsaeKomiRunState.stopped;
     osaeKomiSide = OsaeKomiSide.none;
     status = MatchStatus.finished;
+    if (timeUp) {
+      _playEndSound();
+    }
     notifyListeners();
+  }
+
+  Future<void> _playEndSound() async {
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource(endSoundAsset));
+    } catch (e) {
+      // 音源ファイルが見つからない場合などは無視
+      debugPrint('終了音の再生に失敗しました: $e');
+    }
   }
 
   void resetMatch() {
